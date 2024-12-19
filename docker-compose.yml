@@ -1,0 +1,138 @@
+version: '3.9'  # Versi format Docker Compose yang digunakan
+name: advanced_docker_app  # Nama aplikasi Docker Compose, tidak digunakan langsung dalam file
+
+services:
+
+  # Web server (NGINX)
+  web:
+    image: nginx:latest  # Menggunakan image NGINX versi terbaru
+    container_name: zahradiyan24c_web  # Nama kontainer NGINX
+    ports:
+      - "8080:80"  # Memetakan port 8080 di host ke port 80 di kontainer
+    volumes:
+      - ./nginx-conf/nginx.conf:/etc/nginx/nginx.conf:ro  # Pemetaan file konfigurasi nginx.conf
+      - ./nginx-conf/default.conf:/etc/nginx/conf.d/default.conf:ro  # Pemetaan file default.conf
+      - ./nginx-website:/usr/share/nginx/html:ro  # Pemetaan folder website ke dalam kontainer
+    depends_on:
+      - db  # Mengharuskan kontainer db (PostgreSQL) berjalan terlebih dahulu
+      - redis  # Mengharuskan kontainer redis berjalan terlebih dahulu
+      - message_queue  # Mengharuskan kontainer message_queue berjalan terlebih dahulu
+    networks:
+      - app_network  # Menghubungkan ke jaringan app_network
+    environment:
+      - NGINX_HOST=localhost  # Variabel lingkungan untuk NGINX
+      - NGINX_PORT=80  # Port yang digunakan oleh NGINX
+
+  # Database server (PostgreSQL)
+  db:
+    image: postgres:latest  # Menggunakan image PostgreSQL versi terbaru
+    container_name: zahradiyan24c_db  # Nama kontainer PostgreSQL
+    environment:
+      POSTGRES_USER: zahradiyan24c  # User untuk PostgreSQL
+      POSTGRES_PASSWORD: cobapw123  # Password untuk PostgreSQL
+      POSTGRES_DB: mydatabase  # Nama database
+      POSTGRES_HOST_AUTH_METHOD: trust  # digunakan untuk mengontrol akses ke database. Ketika menggunakan trust, PostgreSQL akan mengizinkan koneksi ke database tanpa memerlukan kata sandi atau kredensial pengguna, selama koneksi datang dari host yang ditentukan.
+    ports:
+      - "5432:5432"  # Memetakan port 5432 di host ke port 5432 di kontainer
+    volumes:
+      - db_data:/var/lib/postgresql/data  # Menyimpan data database secara persistent
+    networks:
+      - app_network  # Menghubungkan ke jaringan app_network
+
+  # Message Queue server (RabbitMQ)
+  message_queue:
+    image: rabbitmq:management  # Menggunakan image RabbitMQ dengan manajemen UI
+    container_name: zahradiyan24c_message_queue  # Nama kontainer RabbitMQ
+    ports:
+      - "15672:15672"  # Memetakan port 15672 untuk UI manajemen RabbitMQ
+      - "5672:5672"    # Memetakan port 5672 untuk protokol AMQP
+    networks:
+      - app_network  # Menghubungkan ke jaringan app_network
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest  # Default username untuk RabbitMQ
+      - RABBITMQ_DEFAULT_PASS=guest  # Default password untuk RabbitMQ
+
+  # Caching server (Redis)
+  redis:
+    image: redis:latest  # Menggunakan image Redis versi terbaru
+    container_name: zahradiyan24c_redis  # Nama kontainer Redis
+    command: ["redis-server", "--appendonly", "yes"]  # Menjalankan Redis dengan mode append-only file
+    ports:
+      - "6379:6379"  # Memetakan port 6379 di host untuk mengakses Redis
+    volumes:
+      - redis_data:/data  # Menyimpan data Redis di volume persistent
+    networks:
+      - app_network  # Menghubungkan ke jaringan app_network
+    environment:
+      - REDIS_PASSWORD=redispass  # Menetapkan password Redis
+
+  # Admin panel for DB (Adminer)
+  adminer:
+    image: adminer:latest  # Menggunakan image Adminer untuk manajemen database
+    container_name: zahradiyan24c_adminer  # Nama kontainer Adminer
+    ports:
+      - "8081:8080"  # Memetakan port 8081 di host untuk mengakses Adminer
+    depends_on:
+      - db  # Mengharuskan kontainer db berjalan terlebih dahulu
+    networks:
+      - app_network  # Menghubungkan ke jaringan app_network
+
+  # Monitoring service (Prometheus)
+  prometheus:
+    image: prom/prometheus:latest  # Menggunakan image Prometheus versi terbaru
+    container_name: zahradiyan24c_prometheus  # Nama kontainer Prometheus
+    volumes:
+      - ./prometheus-conf/prometheus.yml:/etc/prometheus/prometheus.yml:ro  # Pemetaan file konfigurasi Prometheus
+    ports:
+      - "9090:9090"  # Memetakan port 9090 di host untuk mengakses UI Prometheus
+    networks:
+      - app_network  # Menghubungkan ke jaringan app_network
+    environment:
+      - PROMETHEUS_CONFIG_PATH=/etc/prometheus/prometheus.yml  # Variabel untuk path konfigurasi Prometheus
+
+  # Monitoring dashboard (Grafana)
+  grafana:
+    image: grafana/grafana:latest  # Menggunakan image Grafana versi terbaru
+    container_name: zahradiyan24c_grafana  # Nama kontainer Grafana
+    ports:
+      - "3000:3000"  # Memetakan port 3000 di host untuk mengakses UI Grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=zahradiyan24c  # Menetapkan username admin Grafana
+      - GF_SECURITY_ADMIN_PASSWORD=cobapw123  # Menetapkan password admin Grafana
+    depends_on:
+      - prometheus  # Mengharuskan kontainer Prometheus berjalan terlebih dahulu
+    networks:
+      - app_network  # Menghubungkan ke jaringan app_network
+    volumes:
+      - grafana_data:/var/lib/grafana  # Menyimpan data Grafana di volume persistent
+
+  # Log management service (Fluentd)
+  fluentd:
+    image: fluent/fluentd:v1.16  # Menggunakan image Fluentd versi 1.16
+    container_name: zahradiyan24c_fluentd  # Nama kontainer Fluentd
+    ports:
+      - "24224:24224"  # Memetakan port 24224 untuk mengakses Fluentd
+    volumes:
+      - C:/Users/diyan/docker-project/fluentd-conf:/fluentd/etc  # Pemetaan konfigurasi Fluentd
+    networks:
+      - app_network  # Menghubungkan ke jaringan app_network
+    environment:
+      - FLUENTD_CONF=fluentd.conf  # Menetapkan file konfigurasi Fluentd
+
+volumes:
+  db_data:  # Volume untuk menyimpan data PostgreSQL secara persistent
+  redis_data:  # Volume untuk menyimpan data Redis secara persistent
+  fluentd_config:  # Volume untuk konfigurasi Fluentd
+  grafana_data:  # Volume untuk menyimpan data Grafana secara persistent
+
+networks:
+  app_network:
+    driver: bridge  # Driver jaringan untuk komunikasi antar kontainer
+
+configs:
+  # NGINX default configuration
+  web_config:
+    file: ./nginx-conf/default.conf
+  # Prometheus configuration file
+  prometheus_config:
+    file: ./prometheus-conf/prometheus.yml
